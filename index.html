@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>迷路ジェネレーター — 印刷用に最適化</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 1rem 0;
+    font-family: "BIZ UDPGothic", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+    color: #000;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+    letter-spacing: 0.08em;
+  }
+
+  .controls {
+    margin-bottom: 0.5rem;
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 0 0.5rem;
+  }
+
+  .difficulty-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid #e67e22;
+  }
+
+  .diff-btn {
+    background: #fff;
+    color: #e67e22;
+    border: none;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 600;
+    line-height: 1.25;
+    transition: background 0.15s, color 0.15s;
+    border-right: 1px solid #e67e22;
+  }
+  .diff-btn small { display: block; font-size: 0.7rem; font-weight: 500; }
+  .diff-btn:last-child { border-right: none; }
+  .diff-btn:hover { background: #fdf2e9; }
+  .diff-btn.active {
+    background: #e67e22;
+    color: #fff;
+  }
+  .diff-btn.hard-tier { color: #b0520a; }
+  .diff-btn.hard-tier.active { background: #b0520a; color: #fff; }
+
+  button.action-btn {
+    background: #e67e22;
+    color: #fff;
+    border: none;
+    padding: 0.55rem 1.3rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    border-radius: 6px;
+    font-family: inherit;
+    font-weight: 600;
+    transition: background 0.15s;
+  }
+  button.action-btn:hover { background: #cf6d17; }
+  button.action-btn.toggle { background: #fff; color: #e67e22; border: 2px solid #e67e22; padding: calc(0.55rem - 2px) calc(1.3rem - 2px); }
+  button.action-btn.toggle.on { background: #e67e22; color: #fff; }
+  button:disabled { opacity: 0.45; cursor: wait; }
+
+  .info {
+    min-height: 1.6em;
+    margin-bottom: 0.6rem;
+    font-size: 0.9rem;
+    color: #444;
+    text-align: center;
+  }
+  .info b { color: #000; }
+  .progress {
+    display: inline-block;
+    width: 160px;
+    height: 8px;
+    border-radius: 4px;
+    background: #f2e1d0;
+    vertical-align: middle;
+    margin-left: 0.5em;
+    overflow: hidden;
+  }
+  .progress > span { display: block; height: 100%; width: 0; background: #e67e22; }
+
+  canvas { display: block; }
+
+  .print-header {
+    display: none;
+    width: 180mm;
+    margin-bottom: 4mm;
+  }
+  .print-header .name-row {
+    display: flex;
+    align-items: baseline;
+    gap: 4mm;
+    font-size: 14pt;
+  }
+  .print-header .name-label {
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .print-header .name-line {
+    flex: 1;
+    border-bottom: 1.5px solid #000;
+    min-height: 1.2em;
+  }
+  .print-header .answer-mark {
+    display: none;
+    font-weight: 700;
+    border: 1.5px solid #000;
+    padding: 0 3mm;
+    white-space: nowrap;
+  }
+  body.show-answer .print-header .answer-mark { display: inline-block; }
+  .print-header .maze-id {
+    font-weight: 700;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    border-bottom: 1.5px solid #000;
+    padding: 0 1mm;
+  }
+  .id-box { display: flex; gap: 0.3rem; align-items: center; }
+  .id-box input {
+    width: 8.5em; padding: 0.5rem 0.6rem; font-size: 0.9rem; font-family: inherit;
+    border: 2px solid #e67e22; border-radius: 6px; color: #000; text-transform: uppercase;
+  }
+
+  @media print {
+    html, body { height: 100%; }
+    body { margin: 0; padding: 0; justify-content: center; }
+    h1, .controls, .info { display: none; }
+    .print-header { display: flex; justify-content: center; }
+    .print-header .name-row { width: 100%; }
+    canvas {
+      width: 180mm !important;
+      height: auto !important;
+      page-break-inside: avoid;
+    }
+    canvas.tall {
+      width: auto !important;
+      height: 245mm !important;
+    }
+    @page {
+      size: A4 portrait;
+      margin: 15mm;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>MAZE — 迷路</h1>
+
+<div class="controls">
+  <div class="difficulty-group">
+    <button class="diff-btn" data-level="easy" onclick="setDifficulty('easy')">やさしい</button>
+    <button class="diff-btn active" data-level="normal" onclick="setDifficulty('normal')">ふつう</button>
+    <button class="diff-btn" data-level="hard" onclick="setDifficulty('hard')">ちょいむず</button>
+    <button class="diff-btn hard-tier" data-level="x2" onclick="setDifficulty('x2')">むずい<small>ちょいむず×2</small></button>
+    <button class="diff-btn hard-tier" data-level="x3" onclick="setDifficulty('x3')">かなりむずい<small>ちょいむず×3</small></button>
+    <button class="diff-btn hard-tier" data-level="x5" onclick="setDifficulty('x5')">げきむず<small>ちょいむず×5</small></button>
+  </div>
+  <button class="action-btn" id="genBtn" onclick="regenerate()">生成</button>
+  <button class="action-btn toggle" id="answerBtn" onclick="toggleAnswer()">こたえ</button>
+  <button class="action-btn" id="printBtn" onclick="window.print()">印刷</button>
+  <div class="id-box">
+    <input id="idInput" type="text" placeholder="番号 例 X5-0482" autocomplete="off" aria-label="迷路の番号"
+           onkeydown="if(event.key==='Enter')recallById()">
+    <button class="action-btn toggle" onclick="recallById()">呼び出し</button>
+  </div>
+</div>
+
+<div class="info" id="info"></div>
+
+<div class="print-header" id="printHeader">
+  <div class="name-row">
+    <span class="name-label">なまえ：</span>
+    <span class="name-line"></span>
+    <span class="maze-id" id="mazeId"></span>
+    <span class="answer-mark">こたえ</span>
+  </div>
+</div>
+
+<canvas id="mazeCanvas"></canvas>
+
+<script>
+// ============================================================
+// 難易度の設定
+//  type 'classic' : もとのアプリと同じ作り方（やさしい〜ちょいむず）
+//  type 'grow'    : 新しい作り方。難しさを測りながら目標の倍率まで育てる
+//  cols×rows は A4 縦に収まる比率（新しい難易度）
+// ============================================================
+const LEVELS = {
+  easy:   { type: 'classic', code: 'E',  cols: 15, rows: 15, label: 'やさしい' },
+  normal: { type: 'classic', code: 'N',  cols: 25, rows: 25, label: 'ふつう' },
+  hard:   { type: 'classic', code: 'H',  cols: 35, rows: 35, label: 'ちょいむず' },
+  x2:     { type: 'grow', code: 'X2', cols: 35, rows: 43, mult: 2, label: 'むずい' },
+  x3:     { type: 'grow', code: 'X3', cols: 40, rows: 49, mult: 3, label: 'かなりむずい' },
+  x5:     { type: 'grow', code: 'X5', cols: 50, rows: 63, mult: 5, label: 'げきむず' },
+};
+
+// 「ちょいむず」（もとの作り方・35×35）の難しさの平均値。
+// 下の evaluate() で、もとの作り方の迷路を30枚測った平均。
+// すべての倍率はこの値を 1 として表示する。
+const BASE_EFFORT = 711;
+
+let currentLevel = 'normal';
+let showAnswer = false;
+let current = null;   // { open, cols, rows, path, ev }
+let jobId = 0;
+
+const canvas = document.getElementById('mazeCanvas');
+const ctx = canvas.getContext('2d');
+const infoEl = document.getElementById('info');
+
+// ============================================================
+// 迷路エンジン（形に依存しない「部屋のつながり」方式）
+//  - graph: { n, x[], y[], nbr[][] }  nbr = 壁を挟んで隣り合う部屋
+//  - tree : open[][]  通路でつながっている部屋（答えが1つ＝木構造）
+// ============================================================
+
+function makeRectGraph(cols, rows) {
+  const n = cols * rows;
+  const x = new Float64Array(n), y = new Float64Array(n);
+  const nbr = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      x[i] = c; y[i] = r;
+      const a = [];
+      if (r > 0) a.push(i - cols);
+      if (c < cols - 1) a.push(i + 1);
+      if (r < rows - 1) a.push(i + cols);
+      if (c > 0) a.push(i - 1);
+      nbr.push(a);
+    }
+  }
+  return { n, x, y, nbr, cols, rows, kind: 'rect' };
+}
+
+// --- 乱数（シード付き） ---
+function makeRng(seed) {
+  let s = seed >>> 0 || 1;
+  return function () {
+    s ^= s << 13; s >>>= 0;
+    s ^= s >>> 17;
+    s ^= s << 5; s >>>= 0;
+    return s / 4294967296;
+  };
+}
+
+// --- 最初の迷路：成長木（新しい部屋から掘る＋ときどきランダム） ---
+function carveTree(g, rng, start, randomProb) {
+  const open = Array.from({ length: g.n }, () => []);
+  const visited = new Uint8Array(g.n);
+  const stack = [start];
+  visited[start] = 1;
+  while (stack.length) {
+    const idx = (rng() < randomProb && stack.length > 1)
+      ? Math.floor(rng() * stack.length) : stack.length - 1;
+    const cur = stack[idx];
+    const cand = g.nbr[cur].filter(v => !visited[v]);
+    if (!cand.length) { stack.splice(idx, 1); continue; }
+    const v = cand[Math.floor(rng() * cand.length)];
+    open[cur].push(v); open[v].push(cur);
+    visited[v] = 1;
+    stack.push(v);
+  }
+  return open;
+}
+
+// ============================================================
+// 難しさの測定：「人が解くときに歩き回るマス数」の期待値
+//
+//  人のモデル:
+//   ・分かれ道では、少し先（LOOK マス）を目で見て、
+//     ゴールに近づきそうな道を選びやすい（重み exp(-BETA*距離)）
+//   ・短い行き止まり（SHORT マス以下）は見ただけで捨てる
+//   ・間違った道に入ったら、その先を全部たしかめてから戻る
+//  スタートから解く場合とゴールから逆に解く場合を両方計算し、
+//  楽なほう（小さいほう）をその迷路の難しさとする。
+// ============================================================
+const MODEL = { LOOK: 3, BETA: 0.45, SHORT: 2 };
+
+const _buf = { n: -1 };
+function getBuf(n) {
+  if (_buf.n !== n) {
+    _buf.n = n;
+    _buf.order = new Int32Array(n);
+    _buf.onPath = new Uint8Array(n);
+    _buf.h = new Int32Array(n);
+    _buf.eff = new Float64Array(n);
+  }
+  return _buf;
+}
+function evaluate(g, open, s, t, model, out) {
+  const M = model || MODEL;
+  const n = g.n;
+  const B = getBuf(n);
+  // s を根にした木（parent/depth は呼び出し側に返すので毎回新しく作る）
+  const parent = out ? out.parent : new Int32Array(n);
+  const depth = out ? out.depth : new Int32Array(n);
+  parent.fill(-1);
+  const order = B.order;
+  let head = 0, tail = 0;
+  order[tail++] = s; parent[s] = s;
+  while (head < tail) {
+    const u = order[head++];
+    const ou = open[u];
+    for (let k = 0; k < ou.length; k++) {
+      const v = ou[k];
+      if (parent[v] === -1) { parent[v] = u; depth[v] = depth[u] + 1; order[tail++] = v; }
+    }
+  }
+  if (parent[t] === -1) return null;
+
+  // 正解の道
+  const onPath = B.onPath; onPath.fill(0);
+  const path = [];
+  for (let v = t; ; v = parent[v]) { onPath[v] = 1; path.push(v); if (v === s) break; }
+  path.reverse();
+
+  // 部分木の高さと「実際に歩かされるマス数」(eff)
+  const h = B.h, eff = B.eff;
+  for (let k = tail - 1; k >= 0; k--) {
+    const v = order[k];
+    if (onPath[v]) continue;
+    let hv = 0, sum = 0;
+    const ov = open[v];
+    for (let q = 0; q < ov.length; q++) {
+      const c = ov[q];
+      if (c === parent[v]) continue;
+      if (h[c] + 1 > hv) hv = h[c] + 1;
+      sum += eff[c];
+    }
+    h[v] = hv;
+    eff[v] = (hv + 1 > M.SHORT) ? 1 + sum : 0;
+  }
+
+  const tx = g.x[t], ty = g.y[t], sx = g.x[s], sy = g.y[s];
+  // 分かれ道 j から隣 v へ進んだとき、少し先に見える地点
+  function lookEnd(j, v) {
+    let prev = j, cur = v;
+    for (let step = 1; step < M.LOOK; step++) {
+      const oc = open[cur];
+      if (oc.length !== 2) break;          // 行き止まり or 分かれ道で止まる
+      const nx = oc[0] === prev ? oc[1] : oc[0];
+      prev = cur; cur = nx;
+    }
+    return cur;
+  }
+  function weight(j, v, gx, gy) {
+    const e = lookEnd(j, v);
+    const dx = g.x[e] - gx, dy = g.y[e] - gy;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    return Math.exp(-M.BETA * d);
+  }
+
+  let wasteF = 0, wasteB = 0;
+  let branchPoints = 0;
+  const sectionWaste = [0, 0, 0, 0, 0];
+  const L = path.length;
+  for (let i = 0; i < L; i++) {
+    const j = path[i];
+    const nextF = i < L - 1 ? path[i + 1] : -1;
+    const nextB = i > 0 ? path[i - 1] : -1;
+    const oj = open[j];
+    let had = false;
+    for (let q = 0; q < oj.length; q++) {
+      const v = oj[q];
+      if (onPath[v]) continue;
+      const cost = 2 * eff[v];
+      if (cost === 0) continue;
+      had = true;
+      const wv_f = weight(j, v, tx, ty);
+      const wv_b = weight(j, v, sx, sy);
+      let pf = 1, pb = 1;
+      if (nextF >= 0) { const wc = weight(j, nextF, tx, ty); pf = wv_f / (wv_f + wc); }
+      if (nextB >= 0) { const wc = weight(j, nextB, sx, sy); pb = wv_b / (wv_b + wc); }
+      wasteF += pf * cost;
+      wasteB += pb * cost;
+      sectionWaste[Math.min(4, Math.floor(i * 5 / L))] += Math.min(pf, pb) * cost;
+    }
+    if (had) branchPoints++;
+  }
+  const forward = L + wasteF, backward = L + wasteB;
+  return {
+    effort: Math.min(forward, backward),
+    forward, backward, pathLen: L, branchPoints, sectionWaste,
+    parent, depth, path,
+  };
+}
+
+// ============================================================
+// 育てる：壁を1枚外して別の1枚を足す（答えは1つのまま）。
+// 難しさが上がれば採用（少しだけ下がる変化もときどき許す）。
+// 目標値に届いたら止める。
+// ============================================================
+function removeEdge(open, a, b) {
+  let i = open[a].indexOf(b); open[a].splice(i, 1);
+  i = open[b].indexOf(a); open[b].splice(i, 1);
+}
+function addEdge(open, a, b) { open[a].push(b); open[b].push(a); }
+
+// 均等さ：5区間のうち一番少ない区間の割合（0〜1）
+function balance(ev) {
+  const sw = ev.sectionWaste;
+  const tot = sw.reduce((a, b) => a + b, 0) || 1;
+  return Math.min(...sw) / (tot / 5);
+}
+function objective(ev, target) {
+  // 5区間の「迷わせ量」を幾何平均でまとめる。
+  // 合計が同じなら均等なほど高くなるので、
+  // 「1か所だけ巨大なワナ」より「どこでも迷う」迷路が育つ。
+  const sw = ev.sectionWaste;
+  let lg = 0;
+  for (let i = 0; i < 5; i++) lg += Math.log(sw[i] + 1);
+  const spread = ev.pathLen + 5 * (Math.exp(lg / 5) - 1);
+  // 目標を超えた分は評価しない（作りすぎ防止）
+  return target ? Math.min(spread, target * 1.04) : spread;
+}
+
+function createOptimizer(g, open, s, t, opts) {
+  const rng = opts.rng;
+  const maxIters = opts.maxIters;
+  const target = opts.target || 0;
+  const bufA = { parent: new Int32Array(g.n), depth: new Int32Array(g.n) };
+  let bufB = { parent: new Int32Array(g.n), depth: new Int32Array(g.n) };
+  let ev = evaluate(g, open, s, t, null, bufA);
+  let cur = objective(ev, target);
+  let temp = opts.temp0 || cur * 0.0005;
+  const cool = Math.pow(0.02, 1 / maxIters);
+  let it = 0;
+  const self = {
+    get ev() { return ev; },
+    get iters() { return it; },
+    done() {
+      return it >= maxIters || (target && ev.effort >= target && balance(ev) > 0.6);
+    },
+    // n 回だけ育てる。終わったら true
+    step(n) {
+      for (let q = 0; q < n; q++) {
+        if (self.done()) return true;
+        it++;
+        temp *= cool;
+        // 通路でつながっていない隣同士 (u,v) を選ぶ
+        const u = Math.floor(rng() * g.n);
+        const nb = g.nbr[u];
+        if (!nb.length) continue;
+        const v = nb[Math.floor(rng() * nb.length)];
+        if (open[u].indexOf(v) >= 0) continue;
+        // u と v を結ぶ今の道（木の上）を求め、その途中の1本を切る
+        const par = ev.parent, dep = ev.depth;
+        const pu = [], pv = [];
+        let a = u, b = v;
+        while (dep[a] > dep[b]) { pu.push(a); a = par[a]; }
+        while (dep[b] > dep[a]) { pv.push(b); b = par[b]; }
+        while (a !== b) { pu.push(a); pv.push(b); a = par[a]; b = par[b]; }
+        const edges = pu.length + pv.length;
+        if (edges === 0) continue;
+        const k = Math.floor(rng() * edges);
+        const x = k < pu.length ? pu[k] : pv[k - pu.length];
+        const y = par[x];
+        removeEdge(open, x, y);
+        addEdge(open, u, v);
+        const ev2 = evaluate(g, open, s, t, null, bufB);
+        const val = ev2 ? objective(ev2, target) : -1;
+        if (val >= cur || (val > 0 && rng() < Math.exp((val - cur) / temp))) {
+          bufB = { parent: ev.parent, depth: ev.depth };
+          ev = ev2; cur = val;
+        } else {
+          removeEdge(open, u, v);
+          addEdge(open, x, y);
+        }
+      }
+      return self.done();
+    },
+  };
+  return self;
+}
+
+function improve(g, open, s, t, opts) {
+  const o = createOptimizer(g, open, s, t, { ...opts, maxIters: opts.iters });
+  o.step(opts.iters);
+  return o.ev;
+}
+
+// ============================================================
+// もとのアプリの作り方（やさしい・ふつう・ちょいむず）
+// ※ 中身は変えていません
+// ============================================================
+const DIRS = [
+  [-1, 0, 0, 2], // up
+  [ 0, 1, 1, 3], // right
+  [ 1, 0, 2, 0], // down
+  [ 0,-1, 3, 1], // left
+];
+
+function createGrid(rows, cols) {
+  const grid = [];
+  for (let r = 0; r < rows; r++) {
+    grid[r] = [];
+    for (let c = 0; c < cols; c++) {
+      grid[r][c] = { walls: [true, true, true, true] };
+    }
+  }
+  return grid;
+}
+
+// --- 改良版 Recursive Backtracking ---
+// 「Newest/Random」ハイブリッド:
+// 通常は最新セルから伸ばす(Newest)が、
+// 一定確率でスタックのランダムな位置に戻って掘る(Random)。
+// → メインの幹から横枝が途中で生えやすくなる。
+function carveMaze(grid, rows, cols) {
+  const visited = Array.from({length: rows}, () => new Uint8Array(cols));
+  const startR = rows - 1, startC = cols - 1;
+  const stack = [[startR, startC]];
+  visited[startR][startC] = 1;
+
+  // ランダム位置に戻る確率 (高いほど分岐が増える)
+  const RANDOM_PROB = 0.25;
+
+  while (stack.length > 0) {
+    // Newest(末尾) or Random(ランダム位置)
+    let idx;
+    if (Math.random() < RANDOM_PROB && stack.length > 1) {
+      idx = Math.floor(Math.random() * stack.length);
+    } else {
+      idx = stack.length - 1;
+    }
+
+    const [cr, cc] = stack[idx];
+    const neighbors = [];
+    for (const [dr, dc, wA, wB] of DIRS) {
+      const nr = cr + dr, nc = cc + dc;
+      if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !visited[nr][nc]) {
+        neighbors.push([dr, dc, wA, wB, nr, nc]);
+      }
+    }
+
+    if (neighbors.length === 0) {
+      // このセルからはもう掘れない → スタックから除去
+      stack.splice(idx, 1);
+      continue;
+    }
+
+    // シャッフルして1つ選ぶ
+    const pick = neighbors[Math.floor(Math.random() * neighbors.length)];
+    const [dr, dc, wA, wB, nr, nc] = pick;
+    grid[cr][cc].walls[wA] = false;
+    grid[nr][nc].walls[wB] = false;
+    visited[nr][nc] = 1;
+    stack.push([nr, nc]);
+  }
+}
+
+// --- BFS: スタート→ゴールの正解経路 ---
+function findSolutionPath(grid, rows, cols) {
+  const prev = Array.from({length: rows}, () => new Array(cols).fill(null));
+  const visited = Array.from({length: rows}, () => new Uint8Array(cols));
+  const queue = [[0, 0]];
+  visited[0][0] = 1;
+
+  while (queue.length > 0) {
+    const [r, c] = queue.shift();
+    if (r === rows - 1 && c === cols - 1) {
+      const path = [];
+      let cr = r, cc = c;
+      while (cr !== 0 || cc !== 0) {
+        path.push([cr, cc]);
+        [cr, cc] = prev[cr][cc];
+      }
+      path.push([0, 0]);
+      path.reverse();
+      return path;
+    }
+    for (const [dr, dc, wallIdx] of DIRS) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      if (visited[nr][nc] || grid[r][c].walls[wallIdx]) continue;
+      visited[nr][nc] = 1;
+      prev[nr][nc] = [r, c];
+      queue.push([nr, nc]);
+    }
+  }
+  return [];
+}
+
+// --- デコイ分岐の深さを計測 ---
+function measureDecoyDepth(grid, rows, cols, startR, startC, fromR, fromC) {
+  let maxD = 0;
+  const stack = [[startR, startC, fromR, fromC, 0]];
+  while (stack.length > 0) {
+    const [r, c, pr, pc, d] = stack.pop();
+    if (d > maxD) maxD = d;
+    for (const [dr, dc, wallIdx] of DIRS) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      if (grid[r][c].walls[wallIdx]) continue;
+      if (nr === pr && nc === pc) continue;
+      stack.push([nr, nc, r, c, d + 1]);
+    }
+  }
+  return maxD;
+}
+
+// --- 改良版スコアリング ---
+// 重視ポイント:
+//   1. 正解ルート上に「分岐点」(デコイ方向が開いてる)が多い
+//   2. その分岐点がルート全体に均等に散らばっている
+//   3. デコイが短すぎない（すぐ行き止まりだと迷わない）
+function scoreMaze(grid, rows, cols) {
+  const path = findSolutionPath(grid, rows, cols);
+  if (path.length === 0) return { score: 0, path };
+
+  const onPath = new Set();
+  for (const [r, c] of path) onPath.add(r * cols + c);
+
+  const pathLen = path.length;
+  // 正解経路を5区間に分けて分岐点の分布を見る
+  const NUM_SECTIONS = 5;
+  const sectionLen = Math.max(1, Math.floor(pathLen / NUM_SECTIONS));
+
+  // 各区間: 分岐点の数、デコイ深さの記録
+  const sections = Array.from({length: NUM_SECTIONS}, () => ({
+    branchCount: 0,    // この区間内の分岐点数
+    decoyDepths: [],   // この区間内のデコイ深さ一覧
+  }));
+
+  // 「深いデコイ」の閾値 = グリッドサイズの12%以上
+  const deepThreshold = Math.max(3, Math.floor(rows * 0.12));
+
+  for (let i = 0; i < pathLen; i++) {
+    const [r, c] = path[i];
+    const sec = Math.min(Math.floor(i / sectionLen), NUM_SECTIONS - 1);
+
+    let hasBranch = false;
+    for (const [dr, dc, wallIdx] of DIRS) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+      if (grid[r][c].walls[wallIdx]) continue;
+      if (onPath.has(nr * cols + nc)) continue;
+      // このセルはデコイ方向が開いている = 分岐点
+      hasBranch = true;
+      const depth = measureDecoyDepth(grid, rows, cols, nr, nc, r, c);
+      sections[sec].decoyDepths.push(depth);
+    }
+    if (hasBranch) sections[sec].branchCount++;
+  }
+
+  // --- スコア計算 ---
+
+  // (A) 分岐点の総数
+  const totalBranches = sections.reduce((s, sec) => s + sec.branchCount, 0);
+
+  // (B) 分岐点の均等分布: 全区間に分岐があるか
+  const branchPerSection = sections.map(s => s.branchCount);
+  const minBranches = Math.min(...branchPerSection);
+  // 全区間に2個以上あれば最高、1個以上で中、0区間があるとペナルティ
+  const uniformBranchBonus = minBranches >= 3 ? 4.0
+                           : minBranches >= 2 ? 3.0
+                           : minBranches >= 1 ? 1.5
+                           : 0.1;
+
+  // (C) 深いデコイの均等分布
+  const allDecoys = sections.flatMap(s => s.decoyDepths);
+  const deepPerSection = sections.map(
+    s => s.decoyDepths.filter(d => d >= deepThreshold).length
+  );
+  const minDeepDecoys = Math.min(...deepPerSection);
+  const uniformDeepBonus = minDeepDecoys >= 2 ? 3.0
+                         : minDeepDecoys >= 1 ? 1.5
+                         : 0.3;
+
+  // (D) 全デコイの平均深さ
+  const avgDecoy = allDecoys.length > 0
+    ? allDecoys.reduce((a, b) => a + b, 0) / allDecoys.length
+    : 0;
+
+  // (E) 正解経路の長さ
+  // 長い方がよい（蛇行している）
+
+  const score = pathLen
+    * (1 + totalBranches * 0.5)   // 分岐点が多いほど良い
+    * uniformBranchBonus           // 分岐が均等に散らばっているか
+    * (1 + avgDecoy * 0.3)        // デコイが深いほど良い
+    * uniformDeepBonus;            // 深いデコイも均等か
+
+  return { score, path, pathLen, totalBranches, branchPerSection, avgDecoy };
+}
+
+// --- 最良の迷路を選ぶ ---
+function generateGoodMaze(rows, cols) {
+  let bestGrid = null;
+  let bestScore = -1;
+  const attempts = 40; // 十分な試行回数で良質な迷路を選ぶ
+
+  for (let i = 0; i < attempts; i++) {
+    const grid = createGrid(rows, cols);
+    carveMaze(grid, rows, cols);
+    const { score } = scoreMaze(grid, rows, cols);
+    if (score > bestScore) {
+      bestScore = score;
+      bestGrid = grid;
+    }
+  }
+  return bestGrid;
+}
+
+// もとのマス目データ → 「部屋のつながり」データに変換
+function gridToOpen(grid, rows, cols) {
+  const open = Array.from({ length: rows * cols }, () => []);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c, w = grid[r][c].walls;
+      if (c < cols - 1 && !w[1]) { open[i].push(i + 1); open[i + 1].push(i); }
+      if (r < rows - 1 && !w[2]) { open[i].push(i + cols); open[i + cols].push(i); }
+    }
+  }
+  return open;
+}
+
+// ============================================================
+// 描画
+// ============================================================
+const SCALE = 3;  // 印刷できれいに出るよう、内部は3倍の解像度で描く
+
+// 白抜き矢印
+function drawArrow(cx, cy, size) {
+  const hw = size * 0.45;
+  const h  = size * 0.85;
+  const sw = size * 0.18;
+  const headH = size * 0.45;
+  const top = -h / 2;
+  const bot =  h / 2;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.beginPath();
+  ctx.moveTo(-sw, top);
+  ctx.lineTo(-sw, bot - headH);
+  ctx.lineTo(-hw, bot - headH);
+  ctx.lineTo(0, bot);
+  ctx.lineTo(hw, bot - headH);
+  ctx.lineTo(sw, bot - headH);
+  ctx.lineTo(sw, top);
+  ctx.closePath();
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function layoutFor(level) {
+  const L = LEVELS[level];
+  if (L.type === 'classic') {
+    // もとのアプリと同じ見た目
+    const cell = Math.floor(600 / L.cols);
+    const arrow = Math.max(cell * 1.4, 32);
+    return { cell, wall: 4, padX: 70, padY: 70, arrow };
+  }
+  // 新しい難易度：A4 縦いっぱいに使う
+  const cell = 14;
+  const arrow = 34;
+  return { cell, wall: 3, padX: 12, padY: arrow + 14, arrow };
+}
+
+function drawMaze() {
+  if (!current) return;
+  const { open, cols, rows, path } = current;
+  const { cell, wall, padX, padY, arrow } = layoutFor(current.level);
+  const mazeW = cols * cell, mazeH = rows * cell;
+  const W = mazeW + padX * 2, H = mazeH + padY * 2;
+
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
+  ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+  const ox = padX, oy = padY;
+
+  // こたえ（灰色の太線：白黒印刷でも見える）
+  if (showAnswer && path) {
+    ctx.strokeStyle = '#9a9a9a';
+    ctx.lineWidth = Math.max(3, cell * 0.42);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ox + cell * 0.5, oy - cell * 0.6);
+    for (const v of path) {
+      const r = Math.floor(v / cols), c = v % cols;
+      ctx.lineTo(ox + c * cell + cell / 2, oy + r * cell + cell / 2);
+    }
+    ctx.lineTo(ox + (cols - 1) * cell + cell / 2, oy + mazeH + cell * 0.6);
+    ctx.stroke();
+  }
+
+  // 壁
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = wall;
+  ctx.lineCap = 'square';
+  ctx.beginPath();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const x = ox + c * cell, y = oy + r * cell;
+      const o = open[i];
+      // 上・左は外周だけ描く（内側は隣の部屋の右・下で描かれる）
+      if (r === 0 && c !== 0) { ctx.moveTo(x, y); ctx.lineTo(x + cell, y); }
+      if (c === 0) { ctx.moveTo(x, y); ctx.lineTo(x, y + cell); }
+      if (!(c < cols - 1 && o.indexOf(i + 1) >= 0)) { ctx.moveTo(x + cell, y); ctx.lineTo(x + cell, y + cell); }
+      const goal = (r === rows - 1 && c === cols - 1);
+      if (!goal && !(r < rows - 1 && o.indexOf(i + cols) >= 0)) { ctx.moveTo(x, y + cell); ctx.lineTo(x + cell, y + cell); }
+    }
+  }
+  ctx.stroke();
+
+  // 入口・出口の矢印
+  drawArrow(ox + cell * 0.5, oy - arrow * 0.5 - 6, arrow);
+  drawArrow(ox + (cols - 1) * cell + cell * 0.5, oy + mazeH + arrow * 0.5 + 6, arrow);
+
+  // 画面での表示サイズ（はみ出さないように縮める）
+  const maxW = Math.min(window.innerWidth * 0.95, W);
+  const maxH = Math.max(window.innerHeight * 0.82, 360);
+  const k = Math.min(maxW / W, maxH / H, 1);
+  canvas.style.width = Math.round(W * k) + 'px';
+  canvas.style.height = Math.round(H * k) + 'px';
+  // 印刷：縦長なら高さ基準、そうでなければ幅基準
+  canvas.classList.toggle('tall', H / W > 245 / 180);
+}
+
+// ============================================================
+// 表示（むずかしさの倍率など）
+// ============================================================
+function setBusy(b) {
+  document.getElementById('genBtn').disabled = b;
+  document.getElementById('printBtn').disabled = b;
+}
+
+function showResult() {
+  const L = LEVELS[current.level];
+  const m = current.ev.effort / BASE_EFFORT;
+  const id = mazeIdString(current.level, current.seed);
+  document.getElementById('mazeId').textContent = 'No. ' + id;
+  infoEl.innerHTML = `番号：<b>${id}</b>　むずかしさ：<b>ちょいむずの 約${m.toFixed(1)}倍</b>`
+    + `（${L.cols}×${L.rows}マス・正解の道 ${current.ev.pathLen}マス）`;
+}
+
+// ============================================================
+// 生成
+// ============================================================
+// 番号（0000〜9999）から乱数を決める。同じ番号なら同じ迷路・同じ答えになる。
+function mazeIdString(level, seed) {
+  return LEVELS[level].code + '-' + String(seed).padStart(4, '0');
+}
+function seedFor(level, seed) {
+  const code = LEVELS[level].code;
+  let h = Math.imul(seed + 1, 2654435761) ^ Math.imul(code.charCodeAt(0) * 31 + (code.charCodeAt(1) || 0), 40503);
+  h = Math.imul(h ^ (h >>> 15), 2246822519);
+  h = Math.imul(h ^ (h >>> 13), 3266489917);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+function regenerate(forcedSeed) {
+  const myJob = ++jobId;
+  const L = LEVELS[currentLevel];
+  const level = currentLevel;
+  const seed = Number.isInteger(forcedSeed) ? forcedSeed : Math.floor(Math.random() * 10000);
+  const rng = makeRng(seedFor(level, seed));
+
+  if (L.type === 'classic') {
+    // もとの作り方は Math.random を使うので、番号から決めた乱数に一時的に差し替える
+    const realRandom = Math.random;
+    let grid;
+    Math.random = rng;
+    try { grid = generateGoodMaze(L.rows, L.cols); } finally { Math.random = realRandom; }
+    const g = makeRectGraph(L.cols, L.rows);
+    const open = gridToOpen(grid, L.rows, L.cols);
+    const ev = evaluate(g, open, 0, g.n - 1);
+    current = { level, seed, open, cols: L.cols, rows: L.rows, path: ev.path, ev };
+    setBusy(false);
+    drawMaze();
+    showResult();
+    return;
+  }
+
+  // 新しい作り方：ふつうの迷路から始めて、目標の倍率まで育てる
+  const g = makeRectGraph(L.cols, L.rows);
+  const open = carveTree(g, rng, g.n - 1, 0.25);
+  const target = BASE_EFFORT * L.mult;
+  const opt = createOptimizer(g, open, 0, g.n - 1, { rng, target, maxIters: 600000 });
+  const t0 = performance.now();
+  const TIME_LIMIT = 30000;  // 30秒で打ち切り（そのときの一番むずかしい状態を使う）
+
+  setBusy(true);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  infoEl.innerHTML = `つくっています… <span class="progress"><span id="bar"></span></span>`;
+
+  function tick() {
+    if (myJob !== jobId) return;               // 別の生成が始まったら中止
+    const end = performance.now() + 40;        // 40ミリ秒ずつ進めて画面を止めない
+    let done = false;
+    while (!done && performance.now() < end) done = opt.step(300);
+    const ev = opt.ev;
+    if (!done && performance.now() - t0 > TIME_LIMIT) done = true;
+    if (!done) {
+      const p = Math.min(1, (ev.effort - BASE_EFFORT * 0.8) / (target - BASE_EFFORT * 0.8));
+      const bar = document.getElementById('bar');
+      if (bar) bar.style.width = Math.max(3, p * 100).toFixed(0) + '%';
+      setTimeout(tick, 0);
+      return;
+    }
+    current = { level, seed, open, cols: L.cols, rows: L.rows, path: ev.path, ev };
+    setBusy(false);
+    drawMaze();
+    showResult();
+  }
+  setTimeout(tick, 30);
+}
+
+// --- 難易度切り替え ---
+function syncButtons() {
+  document.querySelectorAll('.diff-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.level === currentLevel);
+  });
+}
+function setDifficulty(level) {
+  currentLevel = level;
+  syncButtons();
+  regenerate();
+}
+
+// 番号を入れると、同じ迷路をもう一度つくる（答えだけ後から印刷したいときに使う）
+function recallById() {
+  const raw = document.getElementById('idInput').value.trim().toUpperCase().replace(/[－ー‐]/g, '-');
+  const m = raw.match(/^([A-Z0-9]+)-?(\d{1,4})$/);
+  const lv = m && Object.keys(LEVELS).find(k => LEVELS[k].code === m[1]);
+  if (!lv) { infoEl.textContent = '番号が見つかりません（例：X5-0482）'; return; }
+  currentLevel = lv;
+  syncButtons();
+  regenerate(parseInt(m[2], 10));
+}
+
+function toggleAnswer() {
+  showAnswer = !showAnswer;
+  document.getElementById('answerBtn').classList.toggle('on', showAnswer);
+  document.body.classList.toggle('show-answer', showAnswer);
+  drawMaze();
+}
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(drawMaze, 150);
+});
+
+regenerate();
+</script>
+</body>
+</html>

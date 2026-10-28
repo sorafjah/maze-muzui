@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>迷路ジェネレーター — 印刷用に最適化</title>
+<title>ムズめいろ</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -35,6 +35,8 @@
     justify-content: center;
     padding: 0 0.5rem;
   }
+
+  .row-break { flex-basis: 100%; height: 0; }
 
   .difficulty-group {
     display: flex;
@@ -172,7 +174,7 @@
 </head>
 <body>
 
-<h1>MAZE — 迷路</h1>
+<h1>ムズめいろ</h1>
 
 <div class="controls">
   <div class="difficulty-group">
@@ -183,6 +185,7 @@
     <button class="diff-btn hard-tier" data-level="x3" onclick="setDifficulty('x3')">かなりむずい<small>ちょいむず×3</small></button>
     <button class="diff-btn hard-tier" data-level="x5" onclick="setDifficulty('x5')">げきむず<small>ちょいむず×5</small></button>
   </div>
+  <div class="row-break"></div>
   <button class="action-btn" id="genBtn" onclick="regenerate()">生成</button>
   <button class="action-btn toggle" id="answerBtn" onclick="toggleAnswer()">こたえ</button>
   <button class="action-btn" id="printBtn" onclick="window.print()">印刷</button>
